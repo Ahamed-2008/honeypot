@@ -139,11 +139,4 @@ Persona realism can improve with larger datasets
 
 Skilled attackers may detect automated behavior over time
 
-🛠️ Installation & Setup (MVP)
-git clone https://github.com/yourusername/PersonaMimic
-cd PersonaMimic
-pip install -r requirements.txt
-python run.py
 
-
-Frontend and dashboard setup instructions can be added based on your implementation.
