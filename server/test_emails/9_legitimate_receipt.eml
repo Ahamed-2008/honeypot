@@ -1,0 +1,18 @@
+From: Apple <no_reply@email.apple.com>
+To: customer@email.com
+Subject: Your receipt from Apple
+Date: Mon, 04 Dec 2025 16:45:00 +0000
+Content-Type: text/html; charset=utf-8
+
+<html>
+<body>
+<p>Dear Customer,</p>
+<p>Thank you for your purchase.</p>
+<p>Order Number: M1234567890</p>
+<p>Item: iCloud+ Storage (200GB)</p>
+<p>Amount: $2.99</p>
+<p>Date: December 4, 2025</p>
+<p>View receipt: https://apps.apple.com/account/billing</p>
+<p>Apple</p>
+</body>
+</html>
