@@ -16,7 +16,9 @@ export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
-  
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const [formData, setFormData] = useState({
     subject: "",
     body: "",
@@ -48,24 +50,51 @@ export default function UploadPage() {
       return;
     }
     setFileName(file.name);
+    setSelectedFile(file);
     toast.success(`File "${file.name}" uploaded successfully`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.body.trim()) {
-      toast.error("Please enter the email body");
+
+    if (!selectedFile && !formData.body.trim()) {
+      toast.error("Please provide an email file or body text");
       return;
     }
 
     setIsLoading(true);
-    
-    // Simulate analysis
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    
-    toast.success("Analysis complete!");
-    navigate("/analysis/demo");
+
+    try {
+      const data = new FormData();
+      if (selectedFile) {
+        data.append("file", selectedFile);
+      } else {
+        data.append("raw_text", formData.body);
+        // Note: Backend currently extracts subject/sender from raw text or defaults them.
+        // Future improvement: Update backend to accept subject/sender params.
+      }
+
+      const response = await fetch("http://localhost:8000/ingest-email", {
+        method: "POST",
+        body: data,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      toast.success("Analysis complete!");
+
+      // Navigate to analysis page with the result data
+      navigate(`/analysis/${result.id}`, { state: { analysisResult: result } });
+
+    } catch (error) {
+      console.error("Analysis failed:", error);
+      toast.error("Analysis failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const clearForm = () => {
@@ -76,13 +105,13 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      
+
       <main className="flex-1 pt-24 pb-16">
         {/* Hero Section */}
         <section className="relative overflow-hidden py-12">
           <div className="absolute top-0 left-1/3 w-72 h-72 bg-accent-cyan/5 rounded-full blur-3xl animate-float" />
           <div className="absolute bottom-0 right-1/3 w-72 h-72 bg-accent-purple/5 rounded-full blur-3xl animate-float" style={{ animationDelay: "1s" }} />
-          
+
           <div className="container mx-auto px-6 relative z-10">
             <div className="max-w-2xl mx-auto text-center mb-12">
               <div className="w-16 h-16 rounded-2xl bg-gradient-primary/10 mx-auto mb-6 flex items-center justify-center animate-float">
@@ -126,7 +155,7 @@ export default function UploadPage() {
                       className="hidden"
                       onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
                     />
-                    
+
                     {fileName ? (
                       <div className="flex items-center justify-center gap-3">
                         <FileText className="w-8 h-8 text-accent-cyan" />

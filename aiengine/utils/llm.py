@@ -1,78 +1,58 @@
 import os
-import httpx
 import json
 from typing import Optional, Dict, Any
+import google.generativeai as genai
 
 class LLMClient:
-    def __init__(self, base_url: str = "http://localhost:11434/v1", model: str = "gemma3"):
-        self.base_url = os.getenv("LLM_BASE_URL", base_url)
-        self.model = os.getenv("LLM_MODEL", model)
-        self.api_key = os.getenv("LLM_API_KEY", "ollama") # Ollama doesn't need a real key usually
+    def __init__(self):
+        self.api_key = "AIzaSyC8zWDZWNEaZ_7dy8i9hJ8znRPEWA4g8iQ"
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel('gemini-flash-latest')
 
     async def check_connection(self) -> bool:
         """
-        Checks if the LLM service is reachable.
+        Checks if the Gemini API is reachable.
         """
         try:
-            # Ollama usually has a /api/tags or / endpoint. 
-            # For OpenAI compatible, we can try listing models or just a simple GET to base_url
-            # Adjusting to try a simple request to base_url which might be /v1
-            # Or better, try to list models if it's OpenAI compatible
-            url = f"{self.base_url}/models"
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(url, headers={"Authorization": f"Bearer {self.api_key}"})
-                return response.status_code == 200
+            # Simple generation to check connection
+            response = self.model.generate_content("Hello")
+            return True if response.text else False
         except Exception as e:
-            print(f"LLM Connection Check Failed: {e}")
+            print(f"Gemini Connection Check Failed: {e}")
             return False
 
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """
-        Generates text using the local LLM via OpenAI-compatible API (e.g., Ollama).
+        Generates text using Gemini API.
         """
-        url = f"{self.base_url}/chat/completions"
-        
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0.7,
-            "stream": False
-        }
-
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    url, 
-                    json=payload, 
-                    headers={"Authorization": f"Bearer {self.api_key}"}
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+            full_prompt = prompt
+            if system_prompt:
+                full_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
+            
+            response = self.model.generate_content(full_prompt)
+            return response.text
         except Exception as e:
-            print(f"Error calling LLM: {e}")
-            # Fallback for development if LLM is not running
-            return f"[MOCK LLM RESPONSE] Processed prompt: {prompt[:50]}..."
+            print(f"Error calling Gemini: {e}")
+            return f"Error generating response: {str(e)}"
 
     async def generate_json(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """
-        Generates JSON output. Appends instruction to return JSON.
+        Generates JSON output.
         """
-        json_prompt = f"{prompt}\n\nIMPORTANT: Respond ONLY with valid JSON."
+        json_prompt = f"{prompt}\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include markdown formatting like ```json ... ```."
         response_text = await self.generate_text(json_prompt, system_prompt)
         
-        # Basic cleanup to find JSON blob if LLM chats around it
+        # Basic cleanup to find JSON blob
         try:
+            # Remove markdown code blocks if present
+            cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
+            
             # Try to find { and }
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
+            start = cleaned_text.find("{")
+            end = cleaned_text.rfind("}") + 1
             if start != -1 and end != -1:
-                json_str = response_text[start:end]
+                json_str = cleaned_text[start:end]
                 return json.loads(json_str)
             else:
                 return {"error": "No JSON found", "raw": response_text}

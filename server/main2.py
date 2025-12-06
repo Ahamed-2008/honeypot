@@ -15,7 +15,17 @@ import uuid
 import re
 import logging
 from datetime import datetime
+import sys
+import os
 
+# Add parent directory to path to import aiengine
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, HTMLResponse
+from aiengine.services.phishing import analyze_phishing
+from aiengine.services.persona import select_persona
+from aiengine.models import EmailAnalysisRequest, FullAnalysisResponse, PersonaResponse
 
 # ============================================
 # CONFIGURATION
@@ -25,9 +35,7 @@ from datetime import datetime
 MAX_EML_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_MIME_TYPES = ["message/rfc822", "text/plain", "application/octet-stream"]
 
-# AI service config
-AI_ENDPOINT = "http://localhost:8001/analyze"
-AI_TIMEOUT = 10.0
+
 
 # Security patterns
 SUSPICIOUS_KEYWORDS = [
@@ -87,6 +95,10 @@ class IngestResponse(BaseModel):
     risk_score: int
     classification: Optional[str] = None
     message: str
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    email_text: Optional[str] = None
+    ai_analysis: Optional[dict] = None
 
 # ============================================
 # APP INITIALIZATION
@@ -101,14 +113,15 @@ app = FastAPI(
 # CORS - RESTRICT IN PRODUCTION
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Restrict to known origins
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"],  # Restrict to known origins
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
 
-# Async HTTP client for AI service
-async_client = httpx.AsyncClient(timeout=AI_TIMEOUT)
+# Mount static files
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app.mount("/assets", StaticFiles(directory=os.path.join(BASE_DIR, "dist/assets")), name="assets")
 
 # ============================================
 # MIDDLEWARE - REQUEST ID
@@ -263,63 +276,26 @@ def calculate_risk_score(payload: dict) -> int:
 # AI SERVICE INTEGRATION
 # ============================================
 
-async def forward_to_ai(payload: dict, request_id: str):
-    """
-    Async forward to AI service with proper error handling
-    Returns AI analysis or fallback response
-    """
-    try:
-        logger.info(f"Forwarding to AI service: {AI_ENDPOINT}", 
-                   extra={"request_id": request_id})
-        
-        response = await async_client.post(
-            AI_ENDPOINT,
-            json=payload,
-            timeout=AI_TIMEOUT
-        )
-        response.raise_for_status()
-        
-        ai_result = response.json()
-        logger.info(f"AI analysis completed successfully", 
-                   extra={"request_id": request_id})
-        return ai_result
-        
-    except httpx.TimeoutException:
-        logger.error(f"AI service timeout", extra={"request_id": request_id})
-        return {
-            "error": "ai_timeout",
-            "detail": "AI service took too long to respond",
-            "fallback": True
-        }
-    except httpx.HTTPStatusError as e:
-        logger.error(f"AI service HTTP error: {e.response.status_code}", 
-                    extra={"request_id": request_id})
-        return {
-            "error": "ai_http_error",
-            "status_code": e.response.status_code,
-            "fallback": True
-        }
-    except Exception as e:
-        logger.error(f"AI service error: {str(e)}", 
-                    extra={"request_id": request_id})
-        return {
-            "error": "ai_unreachable",
-            "detail": str(e),
-            "fallback": True
-        }
+
 
 # ============================================
 # ROUTES
 # ============================================
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
+@app.get("/api-root")
+async def api_root():
+    """API Root endpoint"""
     return {
         "service": "Email Ingestion API",
         "version": "2.0.0",
         "status": "operational"
     }
+
+# SPA root route
+@app.get("/")
+async def serve_spa_root():
+    """Serve the SPA index.html at root"""
+    return HTMLResponse(content=open(os.path.join(BASE_DIR, "dist/index.html")).read())
 
 @app.get("/health")
 async def health():
@@ -332,7 +308,6 @@ async def health():
 @app.post("/ingest-email", response_model=IngestResponse)
 async def ingest_email(
     request: Request,
-    background_tasks: BackgroundTasks,
     file: Optional[UploadFile] = File(None),
     raw_text: Optional[str] = Form(None)
 ):
@@ -464,12 +439,29 @@ async def ingest_email(
             detail=f"Security analysis failed: {str(e)}"
         )
     
-    # Forward to AI service asynchronously
-    background_tasks.add_task(
-        forward_to_ai, 
-        payload.dict(by_alias=True), 
-        request_id
-    )
+    # Direct AI Service Call
+    try:
+        ai_request = EmailAnalysisRequest(
+            subject=subject,
+            body=body_text,
+            sender=from_addr
+        )
+        
+        # 1. Choose Persona
+        persona_type = select_persona(ai_request)
+        persona_result = PersonaResponse(persona=persona_type, confidence=1.0)
+        
+        # 2. Detect Phishing
+        phishing_result = await analyze_phishing(ai_request)
+        
+        ai_result = FullAnalysisResponse(
+            persona=persona_result,
+            phishing_analysis=phishing_result
+        ).dict()
+        
+    except Exception as e:
+        logger.error(f"AI analysis failed: {str(e)}", extra={"request_id": request_id})
+        ai_result = {"error": str(e)}
     
     # Determine classification
     if risk_score >= 70:
@@ -479,13 +471,17 @@ async def ingest_email(
     else:
         classification = "low_risk"
     
-    # Return accepted response immediately
+    # Return response with AI analysis
     return IngestResponse(
-        status="accepted",
+        status="processed",
         id=email_id,
         risk_score=risk_score,
         classification=classification,
-        message="Email ingested and queued for AI analysis"
+        message="Email analyzed successfully",
+        subject=subject,
+        sender=from_addr,
+        email_text=body_text,
+        ai_analysis=ai_result
     )
 
 # ============================================
@@ -501,7 +497,7 @@ async def startup():
 async def shutdown():
     """Cleanup resources on shutdown"""
     logger.info("🛑 Shutting down...")
-    await async_client.aclose()
+    logger.info("🛑 Shutting down...")
 
 # ============================================
 # ERROR HANDLERS
@@ -532,7 +528,11 @@ async def general_exception_handler(request: Request, exc: Exception):
             "request_id": getattr(request.state, "request_id", None)
         }
     )
-
+# SPA Catch-all route
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve the SPA index.html for any unmatched route"""
+    return HTMLResponse(content=open(os.path.join(BASE_DIR, "dist/index.html")).read())
 # ============================================
 # RUN SERVER
 # ============================================
@@ -540,9 +540,8 @@ async def general_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        app,
         host="0.0.0.0",
         port=8000,
-        reload=True,
         log_level="info"
     )

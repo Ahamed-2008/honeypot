@@ -4,12 +4,10 @@ from aiengine.models import (
     EmailAnalysisRequest, 
     FullAnalysisResponse,
     PersonaResponse,
-    PhishingAnalysisResponse,
-    ReplyResponse
+    PhishingAnalysisResponse
 )
 from aiengine.services.persona import select_persona
 from aiengine.services.phishing import analyze_phishing
-from aiengine.services.reply import generate_reply
 
 app = FastAPI(title="Honeypot AI Engine", version="0.1.0")
 
@@ -26,15 +24,11 @@ async def analyze_email(request: EmailAnalysisRequest):
     # 2. Detect Phishing
     phishing_result = await analyze_phishing(request)
     
-    # 3. Generate Reply
-    reply_result = await generate_reply(request, persona_type)
-    
     return FullAnalysisResponse(
         persona=persona_result,
-        phishing_analysis=phishing_result,
-        generated_reply=reply_result
+        phishing_analysis=phishing_result
     )
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
