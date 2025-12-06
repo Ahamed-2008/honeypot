@@ -1,0 +1,35 @@
+[
+  {
+    "id": "b3095f66-7764-450e-8481-640b41e880f2",
+    "timestamp": "2025-12-06T06:17:31.373420Z",
+    "from": "",
+    "from_display": "",
+    "subject": "",
+    "body_excerpt": "Urgent: Please pay invoice INV-123 for $5,000. Click http://bit.ly/pay123",
+    "urls": [
+      "http://bit.ly/pay123"
+    ],
+    "attachments": [],
+    "suspicious_keywords_detected": [
+      "urgent",
+      "invoice",
+      "click"
+    ],
+    "score": 4,
+    "is_phishing": true,
+    "persona_target": "finance",
+    "behaviour_tags": [
+      "contains_url",
+      "financial_fraud",
+      "urgency",
+      "url_shortener"
+    ],
+    "spoof_flags": [],
+    "persona_reply": "Thanks for the invoice. We'll forward this to procurement and confirm before payment.",
+    "suggested_actions": [
+      "block_url_and_alert",
+      "verify_with_procurement",
+      "flag_for_training"
+    ]
+  }
+]
