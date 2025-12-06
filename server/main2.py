@@ -15,6 +15,7 @@ import uuid
 import re
 import logging
 from datetime import datetime
+import json
 import sys
 import os
 
@@ -25,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse
 from aiengine.services.phishing import analyze_phishing
 from aiengine.services.persona import select_persona
+from aiengine.services.reply import generate_reply
 from aiengine.models import EmailAnalysisRequest, FullAnalysisResponse, PersonaResponse
 
 # ============================================
@@ -52,7 +54,7 @@ SHORTENED_DOMAINS = ["bit.ly", "tinyurl.com", "goo.gl", "ow.ly", "t.co", "buff.l
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -273,6 +275,36 @@ def calculate_risk_score(payload: dict) -> int:
     return min(score, 100)
 
 # ============================================
+# HISTORY MANAGEMENT
+# ============================================
+
+HISTORY_FILE = os.path.join(BASE_DIR, "history.json")
+
+def load_history() -> List[dict]:
+    """Load history from JSON file"""
+    try:
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'r') as f:
+                return json.loads(f.read())
+        return []
+    except Exception as e:
+        logger.error(f"Error loading history: {e}")
+        return []
+
+def save_to_history(entry: dict):
+    """Save an analysis entry to history"""
+    try:
+        history = load_history()
+        history.insert(0, entry)  # Add to beginning
+        # Keep only last 100 entries
+        history = history[:100]
+        
+        with open(HISTORY_FILE, 'w') as f:
+            f.write(json.dumps(history, indent=2))
+    except Exception as e:
+        logger.error(f"Error saving to history: {e}")
+
+# ============================================
 # AI SERVICE INTEGRATION
 # ============================================
 
@@ -304,6 +336,50 @@ async def health():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+@app.get("/history")
+async def get_history():
+    """Get analysis history"""
+    try:
+        history = load_history()
+        return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading history: {str(e)}")
+
+@app.get("/history/{entry_id}")
+async def get_history_entry(entry_id: str):
+    """Get a specific history entry by ID"""
+    try:
+        history = load_history()
+        for entry in history:
+            if entry.get("id") == entry_id:
+                return entry
+        raise HTTPException(status_code=404, detail="History entry not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading history entry: {str(e)}")
+
+@app.delete("/history/{entry_id}")
+async def delete_history_entry(entry_id: str):
+    """Delete a history entry by ID"""
+    try:
+        history = load_history()
+        # Filter out the entry with the given ID
+        updated_history = [entry for entry in history if entry.get("id") != entry_id]
+        
+        if len(updated_history) == len(history):
+            raise HTTPException(status_code=404, detail="History entry not found")
+        
+        # Save the updated history
+        with open(HISTORY_FILE, 'w') as f:
+            f.write(json.dumps(updated_history, indent=2))
+        
+        return {"message": "History entry deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting history entry: {str(e)}")
 
 @app.post("/ingest-email", response_model=IngestResponse)
 async def ingest_email(
@@ -454,9 +530,13 @@ async def ingest_email(
         # 2. Detect Phishing
         phishing_result = await analyze_phishing(ai_request)
         
+        # 3. Generate Reply based on persona
+        reply_result = await generate_reply(ai_request, persona_type)
+        
         ai_result = FullAnalysisResponse(
             persona=persona_result,
-            phishing_analysis=phishing_result
+            phishing_analysis=phishing_result,
+            generated_reply=reply_result
         ).dict()
         
     except Exception as e:
@@ -471,8 +551,8 @@ async def ingest_email(
     else:
         classification = "low_risk"
     
-    # Return response with AI analysis
-    return IngestResponse(
+    # Create response
+    response = IngestResponse(
         status="processed",
         id=email_id,
         risk_score=risk_score,
@@ -483,6 +563,26 @@ async def ingest_email(
         email_text=body_text,
         ai_analysis=ai_result
     )
+    
+    # Save to history
+    try:
+        history_entry = {
+            "id": email_id,
+            "subject": subject,
+            "sender": from_addr,
+            "timestamp": datetime.utcnow().isoformat(),
+            "risk_score": risk_score,
+            "classification": classification,
+            "email_text": body_text,
+            "ai_risk_score": ai_result.get("phishing_analysis", {}).get("risk_score", 0) if ai_result else 0,
+            "is_phishing": ai_result.get("phishing_analysis", {}).get("is_phishing", False) if ai_result else False,
+            "ai_analysis": ai_result  # Save full AI analysis for viewing later
+        }
+        save_to_history(history_entry)
+    except Exception as e:
+        logger.error(f"Failed to save to history: {e}")
+    
+    return response
 
 # ============================================
 # LIFECYCLE EVENTS

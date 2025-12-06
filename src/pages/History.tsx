@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Search, Filter, Trash2, Eye, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,60 +11,53 @@ import { AnimatedCounter } from "@/components/shared/AnimatedCounter";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-// Demo data
-const historyData = [
-  {
-    id: "1",
-    date: "2024-01-15 14:32",
-    sender: "security@paypa1-support.com",
-    subject: "Urgent: Your Account Has Been Compromised",
-    riskLevel: "high" as const,
-    indicatorsCount: 4,
-  },
-  {
-    id: "2",
-    date: "2024-01-14 09:15",
-    sender: "hr@company-benefits.net",
-    subject: "Action Required: Update Your Benefits Information",
-    riskLevel: "medium" as const,
-    indicatorsCount: 2,
-  },
-  {
-    id: "3",
-    date: "2024-01-13 16:45",
-    sender: "admin@microsoft-support.org",
-    subject: "Your Microsoft 365 License Expires Soon",
-    riskLevel: "high" as const,
-    indicatorsCount: 5,
-  },
-  {
-    id: "4",
-    date: "2024-01-12 11:20",
-    sender: "newsletter@legitimate-company.com",
-    subject: "Monthly Newsletter - January Edition",
-    riskLevel: "low" as const,
-    indicatorsCount: 0,
-  },
-  {
-    id: "5",
-    date: "2024-01-11 08:30",
-    sender: "ceo@your-company-exec.com",
-    subject: "Urgent Wire Transfer Needed",
-    riskLevel: "high" as const,
-    indicatorsCount: 6,
-  },
-];
-
-const stats = [
-  { label: "Total Analyzed", value: 127, color: "text-accent-cyan" },
-  { label: "High Risk", value: 23, color: "text-accent-danger" },
-  { label: "Avg Risk Score", value: 58, suffix: "%", color: "text-accent-warning" },
-  { label: "Top Domain", value: "paypa1.com", isText: true },
-];
+interface HistoryEntry {
+  id: string;
+  subject: string;
+  sender: string;
+  timestamp: string;
+  risk_score: number;
+  classification: string;
+  ai_risk_score: number;
+  is_phishing: boolean;
+}
 
 export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch history from backend
+  useEffect(() => {
+    fetch("http://localhost:8000/history")
+      .then((res) => res.json())
+      .then((data) => {
+        const formatted = (data.history || []).map((item: HistoryEntry) => ({
+          id: item.id,
+          date: new Date(item.timestamp).toLocaleString(),
+          sender: item.sender || "Unknown Sender",
+          subject: item.subject || "No Subject",
+          riskLevel: (item.ai_risk_score >= 70 ? "high" : item.ai_risk_score >= 40 ? "medium" : "low") as "high" | "medium" | "low",
+          indicatorsCount: item.is_phishing ? 3 : 0,
+        }));
+        setHistoryData(formatted);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error("Failed to load history:", error);
+        toast.error("Failed to load history");
+        setLoading(false);
+      });
+  }, []);
+
+  // Calculate stats from actual data
+  const stats = [
+    { label: "Total Analyzed", value: historyData.length, color: "text-accent-cyan" },
+    { label: "High Risk", value: historyData.filter(item => item.riskLevel === "high").length, color: "text-accent-danger" },
+    { label: "Avg Risk Score", value: historyData.length > 0 ? Math.round(historyData.reduce((acc, item) => acc + (item.riskLevel === "high" ? 80 : item.riskLevel === "medium" ? 50 : 20), 0) / historyData.length) : 0, suffix: "%", color: "text-accent-warning" },
+    { label: "Recent Items", value: historyData.length, color: "text-accent-cyan" },
+  ];
 
   const filteredData = historyData.filter(
     (item) =>
@@ -73,13 +66,29 @@ export default function HistoryPage() {
   );
 
   const handleDelete = (id: string) => {
-    toast.success("Analysis deleted");
+    fetch(`http://localhost:8000/history/${id}`, {
+      method: 'DELETE',
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to delete");
+        return res.json();
+      })
+      .then(() => {
+        // Remove the deleted entry from local state
+        setHistoryData((prev) => prev.filter((item) => item.id !== id));
+        toast.success("Analysis deleted");
+      })
+      .catch((error) => {
+        console.error("Failed to delete:", error);
+        toast.error("Failed to delete analysis");
+      });
   };
+
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      
+
       <main className="flex-1 pt-24 pb-16">
         <div className="container mx-auto px-6">
           {/* Header */}
@@ -95,8 +104,8 @@ export default function HistoryPage() {
           {/* Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {stats.map((stat, index) => (
-              <Card 
-                key={stat.label} 
+              <Card
+                key={stat.label}
                 className="animate-fade-in-up"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
@@ -105,9 +114,9 @@ export default function HistoryPage() {
                     {stat.isText ? (
                       stat.value
                     ) : (
-                      <AnimatedCounter 
-                        end={stat.value as number} 
-                        suffix={stat.suffix} 
+                      <AnimatedCounter
+                        end={stat.value as number}
+                        suffix={stat.suffix}
                       />
                     )}
                   </div>
@@ -196,8 +205,8 @@ export default function HistoryPage() {
                           <Users className="w-4 h-4 mr-1" />
                           Personas
                         </Button>
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(item.id)}
                           className="text-accent-danger hover:text-accent-danger hover:bg-accent-danger/10"
@@ -213,8 +222,8 @@ export default function HistoryPage() {
               {/* Pagination */}
               {filteredData.length > 0 && (
                 <div className="flex items-center justify-center gap-4 mt-6 pt-6 border-t border-border">
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="sm"
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage((p) => p - 1)}
@@ -225,8 +234,8 @@ export default function HistoryPage() {
                   <span className="text-sm text-foreground-secondary">
                     Page <span className="text-accent-cyan">{currentPage}</span> of 1
                   </span>
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="sm"
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage((p) => p + 1)}

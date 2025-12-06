@@ -20,15 +20,47 @@ export default function AnalysisPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isRegenerating, setIsRegenerating] = useState(false);
-
-  const result = location.state?.analysisResult;
+  const [result, setResult] = useState(location.state?.analysisResult || null);
+  const [loading, setLoading] = useState(!location.state?.analysisResult);
 
   useEffect(() => {
-    if (!result) {
-      toast.error("No analysis data found. Please upload an email first.");
-      navigate("/upload");
+    // If no state was passed, fetch from API using the ID
+    if (!location.state?.analysisResult && id) {
+      fetch(`http://localhost:8000/history/${id}`)
+        .then((res) => {
+          if (!res.ok) throw new Error("History entry not found");
+          return res.json();
+        })
+        .then((data) => {
+          // Transform history entry to match expected format
+          const transformedResult = {
+            id: data.id,
+            subject: data.subject,
+            sender: data.sender,
+            timestamp: data.timestamp,
+            risk_score: data.risk_score,
+            classification: data.classification,
+            email_text: data.email_text,
+            ai_analysis: data.ai_analysis
+          };
+          setResult(transformedResult);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error("Failed to load analysis:", error);
+          toast.error("Failed to load analysis data");
+          navigate("/upload");
+        });
     }
-  }, [result, navigate]);
+  }, [id, location.state, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-foreground-secondary">Loading analysis...</p>
+      </div>
+    );
+  }
 
   if (!result) return null;
 
@@ -45,7 +77,7 @@ export default function AnalysisPage() {
     timestamp: result.timestamp || new Date().toLocaleString(),
     riskScore: phishingAnalysis.risk_score || 0,
     riskLevel: (phishingAnalysis.risk_score >= 70 ? "high" : phishingAnalysis.risk_score >= 40 ? "medium" : "low") as "high" | "medium" | "low",
-    body: result.email_text || "No content available",
+    body: result.email_text || "This is an old history entry. The email content was not saved. Please analyze new emails to see full details.",
     indicators: (phishingAnalysis.tags || []).map((tag: string) => ({
       type: "threat",
       text: tag.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
@@ -63,7 +95,7 @@ export default function AnalysisPage() {
     role: "Employee", // Backend doesn't provide role yet
     confidence: Math.round((persona.confidence || 1.0) * 100),
     tone: "Professional", // Backend doesn't provide tone yet
-    reply: generatedReply.reply_text || "No reply generated.",
+    reply: generatedReply.reply_body || "No reply generated.",
   };
 
   const handleCopy = (text: string, label: string) => {

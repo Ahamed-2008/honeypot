@@ -2,10 +2,17 @@ import os
 import json
 from typing import Optional, Dict, Any
 import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class LLMClient:
     def __init__(self):
-        self.api_key = "AIzaSyC8zWDZWNEaZ_7dy8i9hJ8znRPEWA4g8iQ"
+        # Load API key from environment variable
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY not found in environment variables. Please check your .env file.")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel('gemini-flash-latest')
 
@@ -30,7 +37,24 @@ class LLMClient:
             if system_prompt:
                 full_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
             
-            response = self.model.generate_content(full_prompt)
+            from google.generativeai.types import HarmCategory, HarmBlockThreshold
+            
+            response = self.model.generate_content(
+                full_prompt,
+                safety_settings={
+                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+                }
+            )
+            
+            # Check if response was blocked
+            if not response.text:
+                if response.prompt_feedback:
+                    return f"Response blocked: {response.prompt_feedback}"
+                return "Response was blocked or empty"
+            
             return response.text
         except Exception as e:
             print(f"Error calling Gemini: {e}")

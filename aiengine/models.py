@@ -27,6 +27,12 @@ class PhishingAnalysisResponse(BaseModel):
     tags: List[str]
     reasoning: str
 
+class ReplyResponse(BaseModel):
+    reply_subject: str
+    reply_body: str
+    persona_used: PersonaType
+
 class FullAnalysisResponse(BaseModel):
     persona: PersonaResponse
     phishing_analysis: PhishingAnalysisResponse
+    generated_reply: Optional[ReplyResponse] = None
