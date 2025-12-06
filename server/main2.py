@@ -433,7 +433,7 @@ async def ingest_email(
             "from_display": from_display,
             "to": to_addrs,
             "subject": subject,
-            "body_text": body_text,
+            "email_text": body_text,
             "body_html": body_html,
             "urls": [url.dict() for url in urls],
             "attachments": attachments,
