@@ -28,6 +28,7 @@ class PhishingAnalysisResponse(BaseModel):
     reasoning: str
 
 class ReplyResponse(BaseModel):
+    reply_subject: str
     reply_body: str
     persona_used: PersonaType
 

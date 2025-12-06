@@ -9,6 +9,23 @@ class LLMClient:
         self.model = os.getenv("LLM_MODEL", model)
         self.api_key = os.getenv("LLM_API_KEY", "ollama") # Ollama doesn't need a real key usually
 
+    async def check_connection(self) -> bool:
+        """
+        Checks if the LLM service is reachable.
+        """
+        try:
+            # Ollama usually has a /api/tags or / endpoint. 
+            # For OpenAI compatible, we can try listing models or just a simple GET to base_url
+            # Adjusting to try a simple request to base_url which might be /v1
+            # Or better, try to list models if it's OpenAI compatible
+            url = f"{self.base_url}/models"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(url, headers={"Authorization": f"Bearer {self.api_key}"})
+                return response.status_code == 200
+        except Exception as e:
+            print(f"LLM Connection Check Failed: {e}")
+            return False
+
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """
         Generates text using the local LLM via OpenAI-compatible API (e.g., Ollama).

@@ -27,6 +27,7 @@ def test_analyze_finance_persona():
     
     # Check Reply
     assert data["generated_reply"]["persona_used"] == PersonaType.FINANCE
+    assert "reply_subject" in data["generated_reply"]
     assert len(data["generated_reply"]["reply_body"]) > 0
 
 def test_analyze_hr_persona():

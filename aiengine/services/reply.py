@@ -24,13 +24,26 @@ async def generate_reply(email: EmailAnalysisRequest, persona: PersonaType) -> R
     Body:
     {email.body}
     
-    Draft a short reply. Do not break character. Do not mention you are an AI.
-    If the email seems suspicious, play along but be slightly hesitant or ask a clarifying question based on your persona.
+    Draft a reply email.
+    Return a JSON object with two fields:
+    - "subject": The subject line of the reply (e.g., "Re: ...")
+    - "body": The body of the reply.
+    
+    Do not break character. Do not mention you are an AI.
     """
     
-    reply_text = await llm_client.generate_text(prompt, system_prompt=f"You are a {persona.value} employee.")
+    result = await llm_client.generate_json(prompt, system_prompt=f"You are a {persona.value} employee.")
     
+    # Fallback
+    if "error" in result:
+        return ReplyResponse(
+            reply_subject=f"Re: {email.subject}",
+            reply_body="I received your email and will get back to you shortly.",
+            persona_used=persona
+        )
+
     return ReplyResponse(
-        reply_body=reply_text.strip(),
+        reply_subject=result.get("subject", f"Re: {email.subject}"),
+        reply_body=result.get("body", "").strip(),
         persona_used=persona
     )
