@@ -109,6 +109,18 @@ export function UploadSection() {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium mb-2">Attacker Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <input
+                        type="email"
+                        placeholder="Enter the attacker's email address"
+                        className="w-full h-11 pl-10 pr-4 rounded-lg bg-secondary/50 border border-border focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-medium mb-2">Email Body</label>
                     <textarea
                       placeholder="Paste the email content here..."
