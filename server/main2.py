@@ -112,6 +112,10 @@ app = FastAPI(
     version="2.0.0"
 )
 
+@app.get("/")
+async def root():
+    return {"detail": "Email Ingestion API - Use /ingest or /health endpoints"}
+
 # CORS - RESTRICT IN PRODUCTION
 app.add_middleware(
     CORSMiddleware,
@@ -642,6 +646,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=8001,
         log_level="info"
     )

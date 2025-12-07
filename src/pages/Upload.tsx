@@ -74,7 +74,7 @@ export default function UploadPage() {
         // Future improvement: Update backend to accept subject/sender params.
       }
 
-      const response = await fetch("http://localhost:8000/ingest-email", {
+      const response = await fetch("http://localhost:8001/ingest-email", {
         method: "POST",
         body: data,
       });

@@ -11,6 +11,10 @@ from aiengine.services.phishing import analyze_phishing
 
 app = FastAPI(title="Honeypot AI Engine", version="0.1.0")
 
+@app.get("/")
+async def root():
+    return {"detail": "Honeypot AI Engine - Use /health or /analyze endpoints"}
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return {"status": "ok", "service": "ai-engine"}
@@ -31,4 +35,4 @@ async def analyze_email(request: EmailAnalysisRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

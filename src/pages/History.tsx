@@ -30,7 +30,7 @@ export default function HistoryPage() {
 
   // Fetch history from backend
   useEffect(() => {
-    fetch("http://localhost:8000/history")
+    fetch("http://localhost:8001/history")
       .then((res) => res.json())
       .then((data) => {
         const formatted = (data.history || []).map((item: HistoryEntry) => ({
@@ -66,7 +66,7 @@ export default function HistoryPage() {
   );
 
   const handleDelete = (id: string) => {
-    fetch(`http://localhost:8000/history/${id}`, {
+    fetch(`http://localhost:8001/history/${id}`, {
       method: 'DELETE',
     })
       .then((res) => {

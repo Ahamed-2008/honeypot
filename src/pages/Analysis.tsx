@@ -26,7 +26,7 @@ export default function AnalysisPage() {
   useEffect(() => {
     // If no state was passed, fetch from API using the ID
     if (!location.state?.analysisResult && id) {
-      fetch(`http://localhost:8000/history/${id}`)
+      fetch(`http://localhost:8001/history/${id}`)
         .then((res) => {
           if (!res.ok) throw new Error("History entry not found");
           return res.json();
