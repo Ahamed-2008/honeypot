@@ -1,0 +1,69 @@
+[
+  {
+    "id": "9e9c8fe5-e803-44b6-9f85-0275904af104",
+    "subject": "N/A",
+    "sender": "",
+    "timestamp": "2025-12-06T19:44:33.462320",
+    "risk_score": 25,
+    "classification": "low_risk",
+    "email_text": "You have been locked out your account. Click the link below to regain access\r\nhttps://tinyurl.com/86dmsa5t",
+    "ai_risk_score": 85,
+    "is_phishing": true,
+    "ai_analysis": {
+      "persona": {
+        "persona": "finance",
+        "confidence": 1.0
+      },
+      "phishing_analysis": {
+        "is_phishing": true,
+        "risk_score": 85,
+        "tags": [
+          "urgency",
+          "threat",
+          "link_manipulation",
+          "social_engineering",
+          "missing_details"
+        ],
+        "reasoning": "The email exhibits extreme urgency ('locked out') and directs the user to an untraceable public shortened link (tinyurl.com) to regain account access. The missing sender and subject fields are also strong indicators of malicious intent. This combination strongly suggests a credential harvesting attempt."
+      },
+      "generated_reply": {
+        "reply_subject": "Verification Required: Query Regarding System Access Notification",
+        "reply_body": "To Whom It May Concern,\n\nI have received your notification indicating that my account has been locked out.\n\nAs a matter of critical procedure, and given the necessity of maintaining access for processing invoices and generating required financial reports, I am highly cautious about clicking unfamiliar links regarding system access.\n\nCould you please specify which account or specific organizational system (e.g., ERP, General Ledger, Payroll) this notification pertains to? The lack of system details, sender information, and the use of a URL shortening service raise immediate security concerns.\n\nI must formally request that you verify the authenticity of this access issue through our established internal IT Security Help Desk or an official, known internal email address before I can take any action on the link provided.\n\nThank you for your immediate attention to this verification request.\n\nSincerely,\n[Finance Employee Name]",
+        "persona_used": "finance"
+      }
+    }
+  },
+  {
+    "id": "757aa3fe-5c7c-46ce-b52e-4da64022c573",
+    "subject": "N/A",
+    "sender": "",
+    "timestamp": "2025-12-06T19:18:21.864161",
+    "risk_score": 10,
+    "classification": "low_risk",
+    "email_text": "Click the link below to get 2 lakh. Offer valid for 24 hours only\r\n",
+    "ai_risk_score": 90,
+    "is_phishing": true,
+    "ai_analysis": {
+      "persona": {
+        "persona": "general",
+        "confidence": 1.0
+      },
+      "phishing_analysis": {
+        "is_phishing": true,
+        "risk_score": 90,
+        "tags": [
+          "urgency",
+          "unrealistic_offer",
+          "social_engineering",
+          "lure_of_money"
+        ],
+        "reasoning": "This is a classic 'too good to be true' financial lure combined with high urgency ('Offer valid for 24 hours only') to force immediate action (clicking the implied link)."
+      },
+      "generated_reply": {
+        "reply_subject": "Re: N/A - Question about the 2 lakh offer",
+        "reply_body": "Hello,\n\nOh my goodness, 2 lakh! That sounds wonderful. Thank you very much for thinking of me!\n\nI am just a little bit confused though. What exactly is this money for? Is it a special bonus, or maybe a company contest I forgot about? \n\nAlso, I see where it says 'Click the link below,' but I don't actually see the link itself in the email body. I definitely want to click it before the 24 hours are up, so could you please quickly resend the email and make sure the link is visible? I don't want to miss this generous offer!\n\nThank you for the clarification and the help!\n\nSincerely,",
+        "persona_used": "general"
+      }
+    }
+  }
+]
