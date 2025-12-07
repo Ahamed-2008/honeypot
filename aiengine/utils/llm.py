@@ -1,82 +1,161 @@
 import os
-import httpx
 import json
-from typing import Optional, Dict, Any
+import asyncio
+import time
+import random
+from typing import Optional, Dict, Any, Callable
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class LLMClient:
-    def __init__(self, base_url: str = "http://localhost:11434/v1", model: str = "gemma3"):
-        self.base_url = os.getenv("LLM_BASE_URL", base_url)
-        self.model = os.getenv("LLM_MODEL", model)
-        self.api_key = os.getenv("LLM_API_KEY", "ollama") # Ollama doesn't need a real key usually
+    def __init__(self):
+        # Load API key from environment variable
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY not found in environment variables. Please check your .env file.")
+
+        # Model configuration with optional fallback
+        self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.fallback_model_name = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash-lite")
+        self._used_fallback = False
+
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel(self.model_name)
+
+    def _should_retry(self, e: Exception) -> bool:
+        msg = str(e).lower()
+        retry_markers = ["429", "quota", "rate limit", "retry in", "temporarily unavailable", "deadline exceeded", "unavailable"]
+        return any(m in msg for m in retry_markers)
+
+    def _maybe_switch_to_fallback(self, e: Exception) -> None:
+        if self._used_fallback:
+            return
+        msg = str(e).lower()
+        if ("429" in msg or "quota" in msg) and self.fallback_model_name and self.fallback_model_name != self.model_name:
+            print(f"[LLM] Quota hit on {self.model_name}. Switching to fallback model {self.fallback_model_name}.")
+            self.model_name = self.fallback_model_name
+            self.model = genai.GenerativeModel(self.model_name)
+            self._used_fallback = True
+
+    def _call_with_retry(self, func: Callable[[], Any], max_retries: int = 3) -> Any:
+        backoff = 1.0
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                return func()
+            except Exception as e:  # noqa: BLE001 - SDK raises generic Exceptions
+                last_err = e
+                # If API key is revoked/leaked (403), do not retry
+                if "403" in str(e) and ("leaked" in str(e).lower() or "revoked" in str(e).lower()):
+                    break
+                if self._should_retry(e):
+                    # Try switching to fallback model once on quota errors
+                    self._maybe_switch_to_fallback(e)
+                    sleep_s = backoff + random.uniform(0, 0.5)
+                    time.sleep(sleep_s)
+                    backoff *= 2
+                    continue
+                break
+        raise last_err
 
     async def check_connection(self) -> bool:
         """
-        Checks if the LLM service is reachable.
+        Checks if the Gemini API is reachable.
         """
         try:
-            # Ollama usually has a /api/tags or / endpoint. 
-            # For OpenAI compatible, we can try listing models or just a simple GET to base_url
-            # Adjusting to try a simple request to base_url which might be /v1
-            # Or better, try to list models if it's OpenAI compatible
-            url = f"{self.base_url}/models"
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(url, headers={"Authorization": f"Bearer {self.api_key}"})
-                return response.status_code == 200
+            def _run():
+                resp = self._call_with_retry(lambda: self.model.generate_content("Hello"))
+                return bool(getattr(resp, "text", None))
+            return await asyncio.to_thread(_run)
         except Exception as e:
-            print(f"LLM Connection Check Failed: {e}")
+            print(f"Gemini Connection Check Failed: {e}")
             return False
 
     async def generate_text(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """
-        Generates text using the local LLM via OpenAI-compatible API (e.g., Ollama).
+        Generates text using Gemini API.
         """
-        url = f"{self.base_url}/chat/completions"
-        
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0.7,
-            "stream": False
-        }
+        def _run() -> str:
+            full_prompt = prompt
+            if system_prompt:
+                full_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
+
+            response = self._call_with_retry(
+                lambda: self.model.generate_content(
+                    full_prompt,
+                    safety_settings={
+                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                    },
+                )
+            )
+
+            if not getattr(response, "text", None):
+                if getattr(response, "prompt_feedback", None):
+                    return f"Response blocked: {response.prompt_feedback}"
+                return "Response was blocked or empty"
+            return response.text
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    url, 
-                    json=payload, 
-                    headers={"Authorization": f"Bearer {self.api_key}"}
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+            return await asyncio.to_thread(_run)
         except Exception as e:
-            print(f"Error calling LLM: {e}")
-            # Fallback for development if LLM is not running
-            return f"[MOCK LLM RESPONSE] Processed prompt: {prompt[:50]}..."
+            print(f"Error calling Gemini: {e}")
+            return f"Error generating response: {str(e)}"
 
     async def generate_json(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """
-        Generates JSON output. Appends instruction to return JSON.
+        Generates JSON output. Uses JSON response mode when available and falls back to parsing.
         """
-        json_prompt = f"{prompt}\n\nIMPORTANT: Respond ONLY with valid JSON."
-        response_text = await self.generate_text(json_prompt, system_prompt)
-        
-        # Basic cleanup to find JSON blob if LLM chats around it
-        try:
-            # Try to find { and }
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
-            if start != -1 and end != -1:
-                json_str = response_text[start:end]
-                return json.loads(json_str)
-            else:
-                return {"error": "No JSON found", "raw": response_text}
-        except json.JSONDecodeError:
-             return {"error": "Invalid JSON", "raw": response_text}
+        from google.generativeai.types import HarmCategory, HarmBlockThreshold
+
+        def _run() -> Dict[str, Any]:
+            full_prompt = prompt
+            if system_prompt:
+                full_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
+
+            try:
+                response = self._call_with_retry(
+                    lambda: self.model.generate_content(
+                        full_prompt,
+                        safety_settings={
+                            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                        },
+                        generation_config={
+                            "response_mime_type": "application/json",
+                        },
+                    )
+                )
+
+                text = getattr(response, "text", None)
+                if not text:
+                    if getattr(response, "prompt_feedback", None):
+                        return {"error": f"Response blocked: {response.prompt_feedback}"}
+                    return {"error": "Response was blocked or empty"}
+
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    # Fallback: try to extract a JSON object substring
+                    cleaned_text = text.replace("```json", "").replace("```", "").strip()
+                    start = cleaned_text.find("{")
+                    end = cleaned_text.rfind("}") + 1
+                    if start != -1 and end != -1:
+                        return json.loads(cleaned_text[start:end])
+                    return {"error": "Invalid JSON", "raw": text}
+            except Exception as e:  # surfacing the error message to caller
+                print(f"Error calling Gemini: {e}")
+                return {"error": f"Error generating response: {str(e)}"}
+
+        return await asyncio.to_thread(_run)
 
 llm_client = LLMClient()

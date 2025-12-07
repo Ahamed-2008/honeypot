@@ -4,14 +4,16 @@ from aiengine.models import (
     EmailAnalysisRequest, 
     FullAnalysisResponse,
     PersonaResponse,
-    PhishingAnalysisResponse,
-    ReplyResponse
+    PhishingAnalysisResponse
 )
 from aiengine.services.persona import select_persona
 from aiengine.services.phishing import analyze_phishing
-from aiengine.services.reply import generate_reply
 
 app = FastAPI(title="Honeypot AI Engine", version="0.1.0")
+
+@app.get("/")
+async def root():
+    return {"detail": "Honeypot AI Engine - Use /health or /analyze endpoints"}
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -26,13 +28,9 @@ async def analyze_email(request: EmailAnalysisRequest):
     # 2. Detect Phishing
     phishing_result = await analyze_phishing(request)
     
-    # 3. Generate Reply
-    reply_result = await generate_reply(request, persona_type)
-    
     return FullAnalysisResponse(
         persona=persona_result,
-        phishing_analysis=phishing_result,
-        generated_reply=reply_result
+        phishing_analysis=phishing_result
     )
 
 if __name__ == "__main__":

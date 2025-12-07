@@ -17,9 +17,13 @@ async def analyze_phishing(email: EmailAnalysisRequest) -> PhishingAnalysisRespo
     1. Urgency (e.g., "immediate action required")
     2. Threat (e.g., "account suspended")
     3. Fake Authority (e.g., pretending to be CEO/IT)
-    4. Link Manipulation (suspicious URLs)
+    4. Link Manipulation (suspicious URLs, shortened links)
     5. Unrealistic Offers
     6. Social Engineering Tone
+    
+    Specific Instructions:
+    - Flag as malicious if the email is urgent or uses shortened links.
+    - Flag if it uses words like "terminated" or "suspended".
     
     Return a JSON object with the following fields:
     - is_phishing: boolean

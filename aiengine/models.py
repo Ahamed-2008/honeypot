@@ -35,4 +35,4 @@ class ReplyResponse(BaseModel):
 class FullAnalysisResponse(BaseModel):
     persona: PersonaResponse
     phishing_analysis: PhishingAnalysisResponse
-    generated_reply: ReplyResponse
+    generated_reply: Optional[ReplyResponse] = None

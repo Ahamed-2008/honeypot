@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { 
-  ArrowLeft, Copy, RefreshCw, Send, Download, Share2, 
+import { useState, useEffect } from "react";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft, Copy, RefreshCw, Send, Download, Share2,
   AlertTriangle, Link2, User, Clock, CheckCircle, ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,57 +15,88 @@ import { AnimatedCounter } from "@/components/shared/AnimatedCounter";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// Demo data
-const analysisData = {
-  id: "demo",
-  subject: "Urgent: Your Account Has Been Compromised",
-  sender: "security@paypa1-support.com",
-  timestamp: "2024-01-15 14:32:00",
-  riskScore: 85,
-  riskLevel: "high" as const,
-  body: `Dear Valued Customer,
-
-We have detected unusual activity on your account. Your account has been temporarily limited until you verify your identity.
-
-Please click the link below to verify your account immediately:
-https://paypa1-verify.suspicious-domain.com/login
-
-If you do not verify within 24 hours, your account will be permanently suspended.
-
-Best regards,
-PayPal Security Team`,
-  indicators: [
-    { type: "urgency", text: "Urgency language detected", severity: "high" },
-    { type: "link", text: "Suspicious URL pattern", severity: "high" },
-    { type: "sender", text: "Sender domain mismatch", severity: "medium" },
-    { type: "threat", text: "Account suspension threat", severity: "high" },
-  ],
-  urls: [
-    { url: "https://paypa1-verify.suspicious-domain.com/login", threat: "high" },
-  ],
-  tactics: ["Impersonation", "Fear/Urgency", "Authority Appeal", "Account Threat"],
-};
-
-const personaReply = {
-  persona: "John Davis",
-  role: "Senior Developer",
-  confidence: 92,
-  tone: "Cautious",
-  reply: `Hello,
-
-Thank you for reaching out regarding my account. I want to make sure I'm following the correct process here.
-
-Could you please provide me with more details about the suspicious activity you detected? I'd like to verify this through official channels before clicking any links.
-
-Is there a phone number I can call to speak with your security team directly?
-
-Best regards,
-John Davis`,
-};
-
 export default function AnalysisPage() {
   const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [result, setResult] = useState(location.state?.analysisResult || null);
+  const [loading, setLoading] = useState(!location.state?.analysisResult);
+
+  useEffect(() => {
+    // If no state was passed, fetch from API using the ID
+    if (!location.state?.analysisResult && id) {
+      fetch(`http://localhost:8001/history/${id}`)
+        .then((res) => {
+          if (!res.ok) throw new Error("History entry not found");
+          return res.json();
+        })
+        .then((data) => {
+          // Transform history entry to match expected format
+          const transformedResult = {
+            id: data.id,
+            subject: data.subject,
+            sender: data.sender,
+            timestamp: data.timestamp,
+            risk_score: data.risk_score,
+            classification: data.classification,
+            email_text: data.email_text,
+            ai_analysis: data.ai_analysis
+          };
+          setResult(transformedResult);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error("Failed to load analysis:", error);
+          toast.error("Failed to load analysis data");
+          navigate("/upload");
+        });
+    }
+  }, [id, location.state, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-foreground-secondary">Loading analysis...</p>
+      </div>
+    );
+  }
+
+  if (!result) return null;
+
+  // Map backend response to UI format
+  const aiAnalysis = result.ai_analysis || {};
+  const phishingAnalysis = aiAnalysis.phishing_analysis || {};
+  const generatedReply = aiAnalysis.generated_reply || {};
+  const persona = aiAnalysis.persona || {};
+
+  const analysisData = {
+    id: result.id,
+    subject: result.subject || "No Subject",
+    sender: result.sender || "Unknown Sender",
+    timestamp: result.timestamp || new Date().toLocaleString(),
+    riskScore: phishingAnalysis.risk_score || 0,
+    riskLevel: (phishingAnalysis.risk_score >= 70 ? "high" : phishingAnalysis.risk_score >= 40 ? "medium" : "low") as "high" | "medium" | "low",
+    body: result.email_text || "This is an old history entry. The email content was not saved. Please analyze new emails to see full details.",
+    indicators: (phishingAnalysis.tags || []).map((tag: string) => ({
+      type: "threat",
+      text: tag.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+      severity: "high"
+    })),
+    urls: (phishingAnalysis.urls || []).map((url: any) => ({
+      url: url.url,
+      threat: url.is_suspicious ? "high" : "low"
+    })),
+    tactics: phishingAnalysis.tactics || [],
+  };
+
+  const personaReply = {
+    persona: persona.persona || "Default Persona",
+    role: "Employee", // Backend doesn't provide role yet
+    confidence: Math.round((persona.confidence || 1.0) * 100),
+    tone: "Professional", // Backend doesn't provide tone yet
+    reply: generatedReply.reply_body || "No reply generated.",
+  };
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -82,13 +113,13 @@ export default function AnalysisPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      
+
       <main className="flex-1 pt-24 pb-16">
         <div className="container mx-auto px-6">
           {/* Back Navigation */}
           <div className="mb-8 animate-fade-in-up">
-            <Link 
-              to="/history" 
+            <Link
+              to="/history"
               className="inline-flex items-center text-foreground-secondary hover:text-foreground transition-colors"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -144,7 +175,7 @@ export default function AnalysisPage() {
                         key={index}
                         className={cn(
                           "flex items-start gap-3 p-3 rounded-lg border animate-fade-in-up",
-                          indicator.severity === "high" 
+                          indicator.severity === "high"
                             ? "bg-accent-danger/5 border-accent-danger/20"
                             : "bg-accent-warning/5 border-accent-warning/20"
                         )}
@@ -210,8 +241,8 @@ export default function AnalysisPage() {
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
                     {analysisData.tactics.map((tactic, index) => (
-                      <Badge 
-                        key={index} 
+                      <Badge
+                        key={index}
                         variant="secondary"
                         className="animate-fade-in-up"
                         style={{ animationDelay: `${index * 50}ms` }}
@@ -257,16 +288,16 @@ export default function AnalysisPage() {
 
                     {/* Action Buttons */}
                     <div className="grid grid-cols-2 gap-2 pt-2">
-                      <Button 
-                        variant="secondary" 
+                      <Button
+                        variant="secondary"
                         size="sm"
                         onClick={() => handleCopy(personaReply.reply, "Reply")}
                       >
                         <Copy className="w-4 h-4 mr-2" />
                         Copy
                       </Button>
-                      <Button 
-                        variant="secondary" 
+                      <Button
+                        variant="secondary"
                         size="sm"
                         onClick={handleRegenerate}
                         disabled={isRegenerating}
